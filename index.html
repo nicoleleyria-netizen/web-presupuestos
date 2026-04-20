@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Generador de Presupuestos – Agrimensura</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- libs (defer para que estén listas antes del app.js) -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/mustache@4.2.0/mustache.min.js" defer></script>
+
+  <style>
+    /* Área A4 para la vista previa (~96dpi) */
+    #doc { 
+      width: 794px; 
+      min-height: 1123px; 
+      padding: 32px; 
+      background: #fff; 
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+      line-height: 1.5;
+    }
+    @media (max-width: 820px) { 
+      #doc { 
+        width: 100%; 
+        padding: 16px;
+      } 
+    }
+    
+    /* Estilo para cuando está cargando */
+    #doc.flex {
+      color: #666;
+      font-style: italic;
+    }
+    
+    .hito-row {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .avoid-break {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .dashboard-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 0.75rem;
+      background: #fff;
+      padding: 0.75rem;
+    }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <header class="sticky top-0 z-10 bg-white border-b">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <h1 class="text-xl md:text-2xl font-semibold">Generador de Presupuestos – Agrimensura</h1>
+      <div class="flex gap-2">
+        <button id="btnDoc" class="px-4 py-2 rounded-2xl bg-gray-700 text-white font-medium hover:bg-gray-800 shadow">
+          Descargar .DOC
+        </button>
+        <button id="btnDescargar" class="px-4 py-2 rounded-2xl bg-blue-800 text-white font-medium hover:bg-blue-900 shadow">
+          Descargar PDF
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Formulario -->
+    <section class="bg-white rounded-2xl shadow p-4 md:p-6 space-y-6">
+      <h2 class="text-lg font-semibold">Datos del presupuesto</h2>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium">Fecha</label>
+          <input id="fecha" type="date" class="mt-1 w-full rounded-xl border p-2" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium">Modelo</label>
+          <select id="modelo" class="mt-1 w-full rounded-xl border p-2">
+            <option value="mensuraPosesion">Mensura de Posesión</option>
+            <option value="amojonamiento">Amojonamiento</option>
+            <option value="relevamientoTopo">Relevamiento Topográfico</option>
+            <option value="mensuraSubdiv">Mensura y Subdivisión</option>
+            <option value="bep">BEP – Verificación de Estado Parcelario</option>
+            <option value="usucapion">Usucapión</option>
+            <option value="otro">Otro (personalizado)</option>
+          </select>
+
+          <!-- Nombre del trabajo (sólo para "Otro") -->
+          <div id="wrapCustom" class="hidden">
+            <label class="block text-sm font-medium mt-2">Nombre del trabajo</label>
+            <input id="modeloCustom" type="text" placeholder="Ej: Certificación de linderos"
+                   class="mt-1 w-full rounded-xl border p-2" />
+          </div>
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium">Comitente</label>
+          <input id="comitente" type="text" placeholder="Ej: Martín Pérez" class="mt-1 w-full rounded-xl border p-2" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium">Teléfono</label>
+          <input id="telefono" type="tel" class="mt-1 w-full rounded-xl border p-2" />
+        </div>
+
+        <!-- CAMBIO: Email -> N° de Cuenta (se mantiene id="email" para no romper JS) -->
+        <div>
+          <label class="block text-sm font-medium">N° de Cuenta</label>
+          <input id="email" type="text" placeholder="Ej: 000-123456/7" class="mt-1 w-full rounded-xl border p-2" />
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium">Ubicación</label>
+          <input id="ubicacion" type="text" placeholder="Ej: La Calera, Córdoba" class="mt-1 w-full rounded-xl border p-2" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium">Moneda</label>
+          <select id="moneda" class="mt-1 w-full rounded-xl border p-2">
+            <option value="ARS">ARS</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium">Subtotal (honorarios)</label>
+          <input id="monto" type="number" step="0.01" placeholder="Ej: 450000" class="mt-1 w-full rounded-xl border p-2" />
+          <p id="montoHint" class="text-xs text-gray-500 mt-1"></p>
+        </div>
+
+        <!-- FORMA DE PAGO -->
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium">Forma de pago</label>
+          <div class="rounded-xl border bg-gray-50 p-3">
+            <div class="flex items-center gap-6 mb-3">
+              <label class="inline-flex items-center gap-2">
+                <input type="radio" name="pagoModo" id="pagoModoAvance" checked />
+                <span>Por avance (hitos)</span>
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input type="radio" name="pagoModo" id="pagoModoCuotas" />
+                <span>En cuotas</span>
+              </label>
+            </div>
+
+            <!-- Hitos -->
+            <div id="pagoAvance" class="space-y-2">
+              <div class="flex justify-between items-center mb-2">
+                <div class="font-medium">Hitos de pago</div>
+                <button id="btnAddHito" type="button" class="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300 text-sm">
+                  Agregar hito
+                </button>
+              </div>
+              <div id="hitosContainer" class="space-y-2"></div>
+              <div id="sumaHitos" class="text-xs text-gray-600 mt-1">Suma de hitos: $0,00</div>
+            </div>
+
+            <!-- Cuotas -->
+            <div id="pagoCuotas" class="hidden">
+              <label class="block text-sm font-medium">Cantidad de cuotas</label>
+              <input id="cuotasCant" type="number" min="2" value="3" class="mt-1 w-32 rounded-xl border p-2" />
+              <div id="cuotasInfo" class="text-xs text-gray-600 mt-1"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Adicional: visado -->
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium">Adicionales</label>
+          <div class="flex items-center gap-3">
+            <input id="chkVisado" type="checkbox" class="h-4 w-4" />
+            <label for="chkVisado" class="text-sm">Visado colegio de ingenieros</label>
+            <input id="montoVisado" type="number" step="0.01" placeholder="Ej: 400000" class="rounded-xl border p-2 w-44" disabled />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium">Plazo estimado</label>
+          <input id="plazo" type="text" value="30 a 45 días" class="mt-1 w-full rounded-xl border p-2" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium">Validez de la oferta</label>
+          <input id="validez" type="text" value="15 días" class="mt-1 w-full rounded-xl border p-2" />
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium">Observaciones</label>
+          <textarea id="observaciones" rows="3" class="mt-1 w-full rounded-xl border p-2"></textarea>
+        </div>
+      </div>
+
+      <!-- Empresa -->
+      <details class="rounded-xl border bg-gray-50 p-4">
+        <summary class="cursor-pointer font-medium">Datos de la empresa</summary>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+          <div>
+            <label class="block text-sm font-medium">Razón social</label>
+            <input id="empRazon" type="text" value="AGRIMENSOR YA" class="mt-1 w-full rounded-xl border p-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium">Profesional (opcional)</label>
+            <input id="empProfesional" type="text" value="Ing. Jorge Leyria" class="mt-1 w-full rounded-xl border p-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium">CUIT</label>
+            <input id="empCuit" type="text" value="CUIT 30-00000000-0" class="mt-1 w-full rounded-xl border p-2" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium">Domicilio</label>
+            <input id="empDom" type="text" value="Av. Ejemplo 123, Córdoba" class="mt-1 w-full rounded-xl border p-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium">Email</label>
+            <input id="empEmail" type="email" value="contacto@agrimensura.com" class="mt-1 w-full rounded-xl border p-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium">Teléfono</label>
+            <input id="empTel" type="text" value="+54 9 351 000-0000" class="mt-1 w-full rounded-xl border p-2" />
+          </div>
+          <div class="sm:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium">URL del logo</label>
+              <input id="empLogo" type="text" value="LOGO.jpg" class="mt-1 w-full rounded-xl border p-2" />
+              <p class="text-xs text-gray-500 mt-1">Si el logo está junto al HTML, usá <code>LOGO.jpg</code>. O cargalo abajo.</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium">Cargar logo</label>
+              <input id="empLogoFile" type="file" accept="image/*" class="mt-1 w-full rounded-xl border p-2" />
+            </div>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium">Leyenda legal</label>
+            <textarea id="empLeyenda" rows="2" class="mt-1 w-full rounded-xl border p-2">
+Los honorarios no incluyen tasas/tributos municipales, provinciales o nacionales. El visado del Colegio de Ingenieros no está incluido salvo que la opción de “Visado colegio de ingenieros” esté tildada. Sujeto a variaciones por trámites o requerimientos no contemplados. Validez de {{validez}}.
+            </textarea>
+          </div>
+        </div>
+      </details>
+
+      <!-- Editar explicación del modelo -->
+      <details class="rounded-xl border bg-gray-50 p-4">
+        <summary class="cursor-pointer font-medium">Editar explicación del trabajo (opcional)</summary>
+        <div class="mt-3 space-y-2">
+          <label class="block text-sm text-gray-600">Podés usar placeholders: {{nombre}}, {{lugar}}, {{montoFormateado}}, {{validez}}.</label>
+          <textarea id="textoModelo" rows="8" class="w-full rounded-xl border p-2 font-mono text-sm"></textarea>
+          <div class="text-xs text-gray-500">Si lo dejás vacío, se usa el texto del modelo.</div>
+        </div>
+      </details>
+    </section>
+
+    <!-- Vista previa -->
+    <section class="bg-white rounded-2xl shadow p-4 md:p-6">
+      <h2 class="text-lg font-semibold mb-4">Vista previa</h2>
+      <div id="doc" class="mx-auto rounded-lg border shadow-sm flex items-center justify-center">
+        <div class="text-gray-500">Cargando vista previa...</div>
+      </div>
+    </section>
+
+    <section class="lg:col-span-2 bg-white rounded-2xl shadow p-4 md:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 class="text-lg font-semibold">Dashboard de cotizaciones</h2>
+          <p class="text-sm text-gray-600">Se registra automáticamente cada presupuesto al descargar PDF o DOC.</p>
+        </div>
+        <button id="btnLimpiarDashboard" class="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm">
+          Limpiar historial
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 mb-4">
+        <div class="dashboard-card">
+          <div class="text-xs text-gray-500">Total cotizado ARS</div>
+          <div id="dashTotalARS" class="text-xl font-semibold text-blue-900">$0,00</div>
+        </div>
+        <div class="dashboard-card">
+          <div class="text-xs text-gray-500">Total cotizado USD</div>
+          <div id="dashTotalUSD" class="text-xl font-semibold text-blue-900">US$0,00</div>
+        </div>
+        <div class="dashboard-card">
+          <div class="text-xs text-gray-500">Presupuestos aprobados</div>
+          <div id="dashCantidad" class="text-xl font-semibold text-blue-900">0</div>
+        </div>
+        <div class="dashboard-card">
+          <div class="text-xs text-gray-500">Cotizaciones del mes</div>
+          <div id="dashMes" class="text-xl font-semibold text-blue-900">0</div>
+        </div>
+        <div class="dashboard-card">
+          <div class="text-xs text-gray-500">Total de presupuestos aprobados</div>
+          <div id="dashPromedio" class="text-xl font-semibold text-blue-900">$0,00</div>
+        </div>
+      </div>
+
+      <div class="overflow-auto rounded-xl border">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-left">
+            <tr>
+              <th class="px-3 py-2">Fecha</th>
+              <th class="px-3 py-2">Comitente</th>
+              <th class="px-3 py-2">Trabajo</th>
+              <th class="px-3 py-2">Ubicación</th>
+              <th class="px-3 py-2">Moneda</th>
+              <th class="px-3 py-2">Estado</th>
+              <th class="px-3 py-2 text-right">Total</th>
+              <th class="px-3 py-2 text-center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="dashRows" class="divide-y"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="max-w-7xl mx-auto p-4 text-xs text-gray-500">
+    <p>Nombre de archivo: <i>Comitente, TIPO</i>. Colores corporativos amarillo/naranja + azul.</p>
+  </footer>
+
+  <!-- Tu app debe ir siempre al final para que existan todos los IDs -->
+  <script>
+    window.PRESUPUESTOS_BACKEND_URL = "";
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
