@@ -5,6 +5,7 @@ Thumbs.db
 
 # Node / Next.js
 node_modules/
+web-cis/
 web-cis/node_modules/
 web-cis/.next/
 web-cis/out/
